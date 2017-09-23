@@ -1,10 +1,12 @@
 import pygame
-import random
 import sys
+import random
 import os
 import time
 from pygame.locals import *
-import thread
+import _thread
+import tensorflow as tf
+sys.path.append(r"D:/STUDY/PYTHON/self-driving-car-game/inputbox.py")
 import inputbox
 
 # @@@@@@@@@@@@@@@@@@@@
@@ -26,7 +28,7 @@ GREEN = (0, 255, 0)
 BACKGROUND_COLOR = (255, 255, 255)
 LANE_COLOR = (128, 128, 128)
 LANED_COLOR = (0, 0, 0)
-FPS = 60
+FPS = 30
 
 # CNN VARIABLES
 REWARD = 0  # cars passed
@@ -36,9 +38,9 @@ FORWARD = 2
 RIGHT = 3
 TRAFFIC_MIN_SPEED = 10
 TRAFFIC_MAX_SPEED = 50
-LANE_WIDTH = WINDOW_WIDTH / 15
+LANE_WIDTH = int(WINDOW_WIDTH / 15)
 CAR_SPEED = 30
-CAR_SPEED2 = 0
+CAR_SPEED2 = 1
 result = {'left': LEFT, 'forward': FORWARD, 'right': RIGHT}
 init = 0
 prev_lane = LANE_NO
@@ -48,24 +50,38 @@ lane3 = []
 lane4 = []
 lane5 = []
 lane6 = []
-
-
+direction = 0
+change_in_speed = 0
+fl = 0
 # @@@@@@@@@@@@@@@@@
 # === FUNCTIONS ===
 # @@@@@@@@@@@@@@@@@
 
+
 def add_car():
     if len(cars) < random.randrange(1, 6):
         temp = random.randrange(1, 7)
-        if temp != LANE_NO:
-            new_car = {'collision_rect': [pygame.Rect(int(link_dict[temp][0]) + 10, -101, 30, 15),
-                                          pygame.Rect(int(link_dict[temp][0]) + 10, 0, 30, 15)],
+        global direction
+        direction = random.randrange(0, 2)
+        if direction == 0:
+            new_car = {'collision_rect': [pygame.Rect(int(link_dict[temp][0]) + 10, -116, 30, 30),
+                                          pygame.Rect(int(link_dict[temp][0]) + 10, -40, 30, 30)],
                        'self_rect': pygame.Rect(int(link_dict[temp][0]) + 10, -100, 30 , 60),
-                       'speed': CAR_SPEED/5 + CAR_SPEED2 - int(random.randint(TRAFFIC_MIN_SPEED / 6, TRAFFIC_MAX_SPEED / 6)),
+                       'speed': CAR_SPEED/5 + CAR_SPEED2 - random.randint(int(TRAFFIC_MIN_SPEED / 6), int(TRAFFIC_MAX_SPEED / 6)),
                        'surface': pygame.transform.scale(random.choice(sample), (30, 60)),
-                       'lane': temp}
-            cars.append(new_car)
-            print new_car['speed']
+                       'lane': temp,
+                       'direction': direction,
+                       'rel_pos' : ""}
+        elif direction == 1:
+            new_car = {'collision_rect': [pygame.Rect(int(link_dict[temp][0]) + 10, 640, 30, 30),
+                                          pygame.Rect(int(link_dict[temp][0]) + 10, 717, 30, 30)],
+                       'self_rect': pygame.Rect(int(link_dict[temp][0]) + 10, 656, 30, 60),
+                       'speed': CAR_SPEED/5 + CAR_SPEED2 - random.randint(int(TRAFFIC_MIN_SPEED / 6), int(TRAFFIC_MAX_SPEED / 6)),
+                       'surface': pygame.transform.scale(random.choice(sample), (30, 60)),
+                       'lane': temp,
+                       'direction': direction,
+                       'rel_pos' : ""}
+        cars.append(new_car)
 
 
 # Define a function for the thread
@@ -78,12 +94,30 @@ def update(tname, delay):
 
 def update2(tname, delay):
     while True:
-        print "aayu"
-        time.sleep(3)
+        time.sleep(delay)
+        # delete new cars not in the screen
+        for c in cars:
+            if c['self_rect'].top > WINDOW_HEIGHT and c['direction'] == 1:
+                cars.remove(c)
+            if c['self_rect'].bottom < 0 and c['direction'] == 0:
+                cars.remove(c)
+
+
+def update3(tname, delay):
+    while True:
+        global REWARD
+        global fl
+        time.sleep(delay)
         # add new cars at the top of the screen
         for c in cars:
-            if c['self_rect'].top > WINDOW_HEIGHT or c['self_rect'].bottom < 0:
-                cars.remove(c)
+            if (c['self_rect'].top > player_car['self_rect'].top) and (c['self_rect'].top < player_car['self_rect'].bottom) and (c['speed'] < 0):
+                if c['rel_pos'] == "" or c['rel_pos'] == "behind":
+                    REWARD -= 1
+                    c['rel_pos'] = "ahead"
+            if (c['self_rect'].bottom > player_car['self_rect'].top) and (c['self_rect'].bottom < player_car['self_rect'].bottom) and (c['speed'] > 0):
+                if c['rel_pos'] == "" or c['self_rect'] == "ahead":
+                    REWARD += 1
+                    c['rel_pos'] = "behind"
 
 
 def game_end():
@@ -112,8 +146,6 @@ def text_display(text, fonts, surface, x, y, text_color, background_color):
 def collision(player, traffic_cars):
     for car in traffic_cars:
         if player != car:
-            print "player : ", player['lane']
-            print "car : ", car['lane']
             if player['rect'].colliderect(car['rect']):
                 return True
     return False
@@ -122,12 +154,10 @@ def collision(player, traffic_cars):
 def t_collision(some_car, traffic_cars):
     for a_car in traffic_cars:
         if a_car['lane'] == some_car['lane'] and a_car['speed'] != some_car['speed']:
-            if a_car['collision_rect'][0].colliderect(some_car['collision_rect'][1]) or \
-                    a_car['collision_rect'][1].colliderect(some_car['collision_rect'][0]):
-                if a_car['speed'] > some_car['speed']:
-                    a_car['speed'] = some_car['speed']
-                else:
-                    some_car['speed'] = a_car['speed']
+            if (a_car['collision_rect'][0].colliderect(some_car['collision_rect'][1])) or (some_car['collision_rect'][1].colliderect(a_car['collision_rect'][0])):
+                a_car['speed'] = some_car['speed']
+            elif (a_car['collision_rect'][1].colliderect(some_car['collision_rect'][0])) or (some_car['collision_rect'][0].colliderect(a_car['collision_rect'][1])):
+                some_car['speed'] = a_car['speed']
 
 
 # Draw the game world on the window.
@@ -142,40 +172,40 @@ def gui(area):
     area += LANE_WIDTH
     lane1.append(area)
 
-    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, LANE_WIDTH / 10, WINDOW_HEIGHT))
-    area += LANE_WIDTH / 10
+    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, int(LANE_WIDTH / 10), WINDOW_HEIGHT))
+    area += int(LANE_WIDTH / 10)
     lane2 = [area]
 
     pygame.draw.rect(windowSurface, LANE_COLOR, (area, 0, LANE_WIDTH, WINDOW_HEIGHT))
     area += LANE_WIDTH
     lane2.append(area)
 
-    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, LANE_WIDTH / 10, WINDOW_HEIGHT))
-    area += LANE_WIDTH / 10
+    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, int(LANE_WIDTH / 10), WINDOW_HEIGHT))
+    area += int(LANE_WIDTH / 10)
     lane3 = [area]
 
     pygame.draw.rect(windowSurface, LANE_COLOR, (area, 0, LANE_WIDTH, WINDOW_HEIGHT))
     area += LANE_WIDTH
     lane3.append(area)
 
-    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, LANE_WIDTH / 10, WINDOW_HEIGHT))
-    area += LANE_WIDTH / 10
+    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, int(LANE_WIDTH / 10), WINDOW_HEIGHT))
+    area += int(LANE_WIDTH / 10)
     lane4 = [area]
 
     pygame.draw.rect(windowSurface, LANE_COLOR, (area, 0, LANE_WIDTH, WINDOW_HEIGHT))
     area += LANE_WIDTH
     lane4.append(area)
 
-    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, LANE_WIDTH / 10, WINDOW_HEIGHT))
-    area += LANE_WIDTH / 10
+    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, int(LANE_WIDTH / 10), WINDOW_HEIGHT))
+    area += int(LANE_WIDTH / 10)
     lane5 = [area]
 
     pygame.draw.rect(windowSurface, LANE_COLOR, (area, 0, LANE_WIDTH, WINDOW_HEIGHT))
     area += LANE_WIDTH
     lane5.append(area)
 
-    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, LANE_WIDTH / 10, WINDOW_HEIGHT))
-    area += LANE_WIDTH / 10
+    pygame.draw.rect(windowSurface, LANED_COLOR, (area, 0, int(LANE_WIDTH / 10), WINDOW_HEIGHT))
+    area += int(LANE_WIDTH / 10)
     lane6 = [area]
 
     pygame.draw.rect(windowSurface, LANE_COLOR, (area, 0, LANE_WIDTH, WINDOW_HEIGHT))
@@ -246,8 +276,8 @@ text_display("Press 'S' : Start Self - drive", font, windowSurface, (WINDOW_WIDT
 text_display("Press 'T' : Play the game to train", font, windowSurface, (WINDOW_WIDTH / 1.75) - 10,
              (3 * (WINDOW_HEIGHT / 4) + 40), (0, 200, 0), BACKGROUND_COLOR)
 
-player_name = inputbox.ask(windowSurface, "Player Name")
 # update frames on the screen after event input
+player_name = inputbox.ask(windowSurface, "Player Name")
 pygame.display.update()
 # check if user is generating any event, wait endlessly
 choice = is_key_pressed()
@@ -257,11 +287,12 @@ top_speed = zero
 
 # Creating a thread as follows
 try:
-    print "Success: Escape sequence initiated!"
-    thread.start_new_thread(update, ("update_thread1", 0.5, ))
-    thread.start_new_thread(update2, ("update_thread2", 0.5, ))
+    print("Success: Escape sequence initiated!")
+    _thread.start_new_thread(update, ("update_thread1", 0.5, ))
+    _thread.start_new_thread(update2, ("update_thread2", 3, ))
+    _thread.start_new_thread(update3, ("update_thread3", 0.1,))
 except:
-    print "Error: unable to start thread"
+    print("Error: unable to start thread")
 
 # @@@@ FEED SCORE @@@@
 if not os.path.exists("data/save.dat"):
@@ -281,7 +312,14 @@ while LIFE > 0:
     area = 0
     gui(area)
     # draw the lanes
-    link_dict = {1: lane1, 2: lane2, 3: lane3, 4: lane4, 5: lane5, 6: lane6}
+    # link_dict = {1: lane1, 2: lane2, 3: lane3, 4: lane4, 5: lane5, 6: lane6}
+    # row_range = BLOCKS_AHEAD + BLOCKS_BEHIND + 2
+    # col_range = LANES_LEFT + LANES_RIGHT + 1
+    # collision_matrix = [[0 for x in range(row_range)] for y in range(col_range)]
+    # for i in range(LANES_LEFT + LANES_RIGHT +1):
+    #     for j in range(BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
+    #
+
 
     # player car attributes
     player_car = {'collision_rect': [pygame.Rect(int(link_dict[LANE_NO][0]) + 10, (WINDOW_HEIGHT / 2) - 30, 30, 15),
@@ -295,9 +333,9 @@ while LIFE > 0:
     while True:
         gui(area)
         # Draw the score and top score.
-        display_speed = str(CAR_SPEED+CAR_SPEED2)
+        display_speed = str(int(CAR_SPEED+CAR_SPEED2))
         text_display('REWARD: %s' % REWARD, font, windowSurface, 10, 20, (255, 0, 0), (255, 255, 255))
-        text_display('SPEED: %s' %display_speed, font, windowSurface, 10, 50, (255, 0, 255), (255, 255, 255))
+        text_display('SPEED: %s' % display_speed, font, windowSurface, 10, 50, (255, 0, 255), (255, 255, 255))
         text_display('Top Speed: %s' % top_speed, font, windowSurface, 10, 100, (255, 255, 255), (0, 0, 0))
         text_display('Remaining Lives: %s' % LIFE, font, windowSurface, 10, 130, (255, 255, 255), (0, 0, 0))
 
@@ -308,20 +346,21 @@ while LIFE > 0:
                 if event.type == QUIT:
                     LIFE = LIFE - 1
 
-            if LIFE==0:
+            if LIFE == 0:
                 break
 
             if player_car['self_rect'].bottom < 0:
                 player_car['self_rect'].topleft = (link_dict[LANE_NO][0] + 10, WINDOW_HEIGHT)
 
+            global direction
             for c in cars:
                 c['collision_rect'][1].move_ip(0, c['speed'])
                 c['self_rect'].move_ip(0, c['speed'])
                 c['collision_rect'][0].move_ip(0, c['speed'])
                 t_collision(c, cars)
-
-            for c in cars:
-                if c['self_rect'].top > WINDOW_HEIGHT:
+                if c['self_rect'].top > WINDOW_HEIGHT and c['direction'] == 0:
+                    cars.remove(c)
+                if c['self_rect'].bottom < 0 and c['direction'] == 1:
                     cars.remove(c)
 
             # display the cars
@@ -334,46 +373,50 @@ while LIFE > 0:
 
         # if the player wants to drive the car
         elif choice == 2:
+            global change_in_speed
             CAR_SPEED = 0
             for event in pygame.event.get():
+                if event.type == pygame.KEYUP:
+                    if (event.key == pygame.K_DOWN) or (event.key == pygame.K_UP):
+                        change_in_speed = 0
                 if (event.type == pygame.KEYDOWN) and (event.key == pygame.K_UP):
-                    if CAR_SPEED2 < 21:
-                        CAR_SPEED2 = CAR_SPEED2 + 1
-                        for c in cars:
-                            c['speed'] = c['speed'] + 1
+                        change_in_speed = 0.2
                 if (event.type == pygame.KEYDOWN) and (event.key == pygame.K_DOWN):
-                    if CAR_SPEED2 > 0:
-                        CAR_SPEED2 = CAR_SPEED2 - 1
-                        for c in cars:
-                            c['speed'] = c['speed'] - 1
+                        change_in_speed = -0.2
                 if (event.type == pygame.KEYDOWN) and (event.key == pygame.K_LEFT):
                     if player_car['lane'] > 1:
                         player_car['lane'] = player_car['lane'] - 1
                         LANE_NO = LANE_NO - 1
-                        player_car['self_rect'].left = player_car['self_rect'].left - (11*LANE_WIDTH/10)
+                        player_car['self_rect'].left = player_car['self_rect'].left - int(11*LANE_WIDTH/10)
                 if (event.type == pygame.KEYDOWN) and (event.key == pygame.K_RIGHT):
                     if player_car['lane'] < 6:
                         LANE_NO = LANE_NO + 1
                         player_car['lane'] = player_car['lane'] + 1
-                        player_car['self_rect'].left = player_car['self_rect'].left + (11*LANE_WIDTH/10)
+                        player_car['self_rect'].left = player_car['self_rect'].left + int(11*LANE_WIDTH/10)
+
                 if event.type == QUIT:
                     LIFE = LIFE - 1
-
-            if LIFE==0:
+            CAR_SPEED2 += change_in_speed
+            for c in cars:
+                c['speed'] = c['speed'] + change_in_speed
+            if LIFE == 0:
                 break
 
             if player_car['self_rect'].bottom < 0:
                 player_car['self_rect'].topleft = (link_dict[LANE_NO][0] + 10, WINDOW_HEIGHT)
+
+            global direction
             for c in cars:
                 c['collision_rect'][1].move_ip(0, c['speed'])
                 c['self_rect'].move_ip(0, c['speed'])
                 c['collision_rect'][0].move_ip(0, c['speed'])
                 t_collision(c, cars)
+                if c['self_rect'].top > WINDOW_HEIGHT and c['direction'] == 0:
+                    cars.remove(c)
+                if c['self_rect'].bottom < 0 and c['direction'] == 1:
+                    cars.remove(c)
 
             player_car['self_rect'].move_ip(0, -CAR_SPEED2/5)
-            for c in cars:
-                if c['self_rect'].top > WINDOW_HEIGHT:
-                    cars.remove(c)
 
             # display the cars
             windowSurface.blit(player_image, player_car['self_rect'])
@@ -405,4 +448,3 @@ while LIFE > 0:
         choice1 = is_key_pressed()
         if choice1 == 2 or choice1 == 1:
             LIFE = 1
-
