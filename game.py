@@ -181,13 +181,14 @@ def text_display(text, fonts, surface, x, y, text_color, background_color):
     text_rect.topleft = (x, y)
     surface.blit(text_obj, text_rect)
 
+
 # check collision of player car and traffic cars
-def collision(player, traffic_cars):
+def p_collision(player, traffic_cars):
     for car in traffic_cars:
-        if player != car:
-            if player['rect'].colliderect(car['rect']):
-                return True
+        if player['self_rect'].colliderect(car['self_rect']):
+            return True
     return False
+
 
 # check collision of traffic cars internally
 # intelligence to traffic cars to stop if accident possibility ahead
@@ -198,6 +199,10 @@ def t_collision(some_car, traffic_cars):
                 a_car['speed'] = some_car['speed']
             elif (a_car['collision_rect'][1].colliderect(some_car['collision_rect'][0])) or (some_car['collision_rect'][0].colliderect(a_car['collision_rect'][1])):
                 some_car['speed'] = a_car['speed']
+
+# check collision of traffic cars with collision matrix
+def k_collision(i, j, car):
+    if car['self_rect'].top >= collision_matrix[i][j][0] or (car['self_rect'].top <= collision_matrix[i][j][0] and car['self_rect'].bottom <= collision_matrix[i][j][1]:
 
 
 # Draw the game world on the window.
@@ -341,6 +346,10 @@ player_car = {'collision_rect': [pygame.Rect(int(link_dict[LANE_NO][0]) + 10, (W
               'surface': pygame.transform.scale(player_image, (30, 60)),
               'lane': LANE_NO}
 
+collision_matrix = [[0 for x in range(LANES_RIGHT+LANES_LEFT+1)] for y in range(BLOCKS_AHEAD+BLOCKS_BEHIND+2)]
+knowledge_matrix = [[0 for x in range(LANES_RIGHT+LANES_LEFT+1)] for y in range(BLOCKS_AHEAD+BLOCKS_BEHIND+2)]
+print(knowledge_matrix)
+
 while LIFE > 0:
     gui(area)
     # Draw the score and top score.
@@ -380,7 +389,6 @@ while LIFE > 0:
             c['collision_rect'][0].move_ip(0, -c['speed'])
             t_collision(c, cars)
 
-
         # display the cars
         windowSurface.blit(player_image, player_car['self_rect'])
         for c in cars:
@@ -391,7 +399,7 @@ while LIFE > 0:
 
     # if the player wants to drive and train the car
     elif choice == 2:
-        global change_in_speed, CAR_SPEED
+        global change_in_speed, CAR_SPEED, direction, cnt
         CAR_SPEED = 0
         for event in pygame.event.get():
             if event.type == pygame.KEYUP:
@@ -418,11 +426,16 @@ while LIFE > 0:
         if LIFE == 0:
             break
 
+        for i in range(0, BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
+            for j in range(0, LANES_LEFT + LANES_RIGHT + 1):
+                collision_matrix[i][j] = pygame.draw.rect(windowSurface, (255, 0, 0), (
+                int(player_car['self_rect'].topleft[0] + 59 * j - 60*LANES_LEFT), int(player_car['self_rect'].topleft[1]) + 30 * i - 30*BLOCKS_AHEAD, 30, 30))
+
+        print(collision_matrix)
         if player_car['self_rect'].bottom < 0:
             player_car['self_rect'].topleft = (link_dict[LANE_NO][0] + 10, WINDOW_HEIGHT)
             for c in cars:
                 if c['rel_pos'] == "" and direction == 0:
-                    global cnt
                     while True:
                         pos = random.randint(0, WINDOW_HEIGHT - 100)
                         flag = 0
@@ -439,20 +452,26 @@ while LIFE > 0:
                             cars.remove(c)
                             break
                 elif c['rel_pos'] == "above" or c['rel_pos'] == "receding":
-                    c['collision_rect'][0].topleft = (link_dict[c['lane']][0] + 10, c['collision_rect'][0].topleft[1] + WINDOW_HEIGHT - 30)
-                    c['self_rect'].topleft = (link_dict[c['lane']][0] + 10, c['self_rect'].topleft[1] + WINDOW_HEIGHT)
-                    c['collision_rect'][1].topleft = (link_dict[c['lane']][0] + 10, c['collision_rect'][0].topleft[1] + WINDOW_HEIGHT + 60)
+                    c['collision_rect'][0].topleft = (link_dict[c['lane']][0] + 10, c['collision_rect'][0].topleft[1] + WINDOW_HEIGHT - 10)
+                    c['self_rect'].topleft = (link_dict[c['lane']][0] + 10, c['self_rect'].topleft[1] + WINDOW_HEIGHT + 20)
+                    c['collision_rect'][1].topleft = (link_dict[c['lane']][0] + 10, c['collision_rect'][0].topleft[1] + WINDOW_HEIGHT + 80)
                 elif c['rel_pos'] == "below" or c['rel_pos'] == "approaching":
                     c['collision_rect'][0].topleft = (link_dict[c['lane']][0] + 10, c['collision_rect'][0].topleft[1] + WINDOW_HEIGHT + 20)
                     c['self_rect'].topleft = (link_dict[c['lane']][0] + 10, c['self_rect'].topleft[1] + WINDOW_HEIGHT + 50)
                     c['collision_rect'][1].topleft = (link_dict[c['lane']][0] + 10, c['collision_rect'][0].topleft[1] + WINDOW_HEIGHT + 110)
 
-        global direction
         for c in cars:
             c['collision_rect'][1].move_ip(0, -c['speed'])
             c['self_rect'].move_ip(0, -c['speed'])
             c['collision_rect'][0].move_ip(0, -c['speed'])
             t_collision(c, cars)
+            if p_collision(player_car, cars):
+                LIFE = LIFE - 1
+            for i in range(0, BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
+                for j in range(0, LANES_LEFT + LANES_RIGHT + 1):
+                    if k_collision(i, j, c):
+                        knowledge_matrix[i][j] = 1
+
 
         player_car['speed'] = int(CAR_SPEED2/5)
         player_car['self_rect'].move_ip(0, -player_car['speed'])
@@ -467,25 +486,10 @@ while LIFE > 0:
 
     mainClock.tick(FPS)
 
-    # ***************
-    #  END SCREEN
-    # ***************
+# ***************
+#  END SCREEN
+# ***************
 
-# @@@@ FEED SCORE @@@@
-index = 0
-file_name = "mat"
-file_name += str(index)
-path = "data/"+file_name+".csv"
-if not os.path.exists(path):
-    with open("data/"+file_name+".csv", 'w') as train_data:
-        file_writer = csv.writer(train_data, delimiter=' ')
-        file_writer.writerow(["Collision_Matrix", "Keystroke"])
-        index += 1
-
-with open("data/"+file_name+".csv", 'r') as f:
-    reader = csv.reader(f, delimiter=' ')
-    for row in reader:
-        print(row[0]," === ", row[1])
 if LIFE == 0:
     text_display('!! ~~ Game over ~~ !!', font1, windowSurface, (WINDOW_WIDTH / 4) - 10, (WINDOW_HEIGHT / 3),
                  (0, 0, 0), (255, 255, 255))
@@ -498,3 +502,20 @@ if LIFE == 0:
     choice1 = is_key_pressed()
     if choice1 == 2 or choice1 == 1:
         LIFE = 1
+
+# @@@@ FEED DATA @@@@
+index = 0
+file_name = "mat"
+file_name += str(index)
+path = "data/"+file_name+".csv"
+if not os.path.exists(path):
+    with open("data/"+file_name+".csv", 'w') as train_data:
+        file_writer = csv.writer(train_data, delimiter=',')
+        file_writer.writerow(["Collision_Matrix", "Keystroke"])
+        index += 1
+
+with open("data/"+file_name+".csv", 'r') as f:
+    reader = csv.reader(f, delimiter=',')
+    for rows in reader:
+        for i in range(0,len(rows)):
+            print(rows[i])
