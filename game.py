@@ -10,6 +10,7 @@ import sys
 # seeding and random number generation
 import random
 # access to file management in OS
+
 import os
 # use clock and timers
 import time
@@ -60,6 +61,12 @@ lane6 = []
 direction = 0
 change_in_speed = 0
 cnt = 0
+count = 0
+index = 0
+file_name = "mat"
+file_name += str(index)
+path = "data/"+file_name+".csv"
+knowledge = []
 
 # CNN VARIABLES
 REWARD = 0  # cars passed (may be positive or negative)
@@ -88,7 +95,8 @@ def add_car():
                        'surface': pygame.transform.scale(random.choice(sample), (30, 60)),
                        'lane': temp,
                        'direction': direction,
-                       'rel_pos': ""}
+                       'rel_pos': "",
+                       'stat': ""}
         # spawn cars below the map and player car
         elif direction == 1:
             new_car = {'collision_rect': [pygame.Rect(int(link_dict[temp][0]) + 10, 640, 30, 30),
@@ -98,9 +106,9 @@ def add_car():
                        'surface': pygame.transform.scale(random.choice(sample), (30, 60)),
                        'lane': temp,
                        'direction': direction,
-                       'rel_pos': ""}
+                       'rel_pos': "",
+                       'stat': ""}
         cars.append(new_car)
-
 
 # First thread : creates cars every 0.5 seconds
 def update1(tname, delay):
@@ -126,8 +134,8 @@ def update2(tname, delay):
 # Third thread : calculates the reward of the car every 0.01
 def update3(tname, delay):
     while True:
-        global REWARD
         time.sleep(delay)
+        global REWARD, file_name, path
         # add new cars at the top of the screen
         for c in cars:
             if c['speed'] >= player_car['speed']:
@@ -149,11 +157,12 @@ def update3(tname, delay):
                     elif c['rel_pos'] == "":
                         c['rel_pos'] = "below"
 
+
 # Second thread : removes cars if not in the map every 3 seconds
 def count_timer(tname, delay):
-    global cnt
     while True:
         time.sleep(delay)
+        global cnt
         cnt += 1
 
 # Quit the game
@@ -200,9 +209,26 @@ def t_collision(some_car, traffic_cars):
             elif (a_car['collision_rect'][1].colliderect(some_car['collision_rect'][0])) or (some_car['collision_rect'][0].colliderect(a_car['collision_rect'][1])):
                 some_car['speed'] = a_car['speed']
 
+
 # check collision of traffic cars with collision matrix
-def k_collision(i, j, car):
-    if car['self_rect'].top >= collision_matrix[i][j][0] or (car['self_rect'].top <= collision_matrix[i][j][0] and car['self_rect'].bottom <= collision_matrix[i][j][1]:
+def k_collision(tname, delay):
+    while True:
+        global count
+        time.sleep(delay)
+        for car in cars:
+            for i in range(0, BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
+                for j in range(0, LANES_LEFT + LANES_RIGHT + 1):
+                    if (car['stat'] == "") and ((car['self_rect'].top >= collision_matrix[i][j][1]) and (car['self_rect'].top <= collision_matrix[i][j][1] + 60)) and ((car['self_rect'].right > collision_matrix[i][j][0]) and (car['self_rect'].left < collision_matrix[i][j][0] + 30)):
+                        knowledge_matrix[i][j] = 1
+                        car['stat'] = "mc"
+                    else:
+                        knowledge_matrix[i][j] = 0
+            if car['stat'] != "" and car['stat'] != "counted":
+                count += 1
+                print(count)
+                car['stat'] = "counted"
+        # global knowledge
+        # knowledge.append(str(knowledge_matrix))
 
 
 # Draw the game world on the window.
@@ -278,6 +304,9 @@ car4 = pygame.image.load('image/car4.png')
 playerRect = player_image.get_rect()
 sample = [car2, car3, car4]
 
+if not os.path.exists(path):
+    open(path, 'w')
+
 # ***************
 #  START SCREEN
 # ***************
@@ -321,8 +350,9 @@ top_speed = zero
 try:
     _thread.start_new_thread(update1, ("update_thread1", 0.5, ))
     _thread.start_new_thread(update2, ("update_thread2", 3, ))
-    _thread.start_new_thread(update3, ("update_thread3", 0.1,))
+    _thread.start_new_thread(update3, ("update_thread3", 0.01,))
     _thread.start_new_thread(count_timer, ("update_thread4", 0.2,))
+    _thread.start_new_thread(k_collision, ("update_thread5", 0.001,))
     print("Success: Escape sequence initiated!")
 except:
     print("Error: unable to start thread")
@@ -348,7 +378,6 @@ player_car = {'collision_rect': [pygame.Rect(int(link_dict[LANE_NO][0]) + 10, (W
 
 collision_matrix = [[0 for x in range(LANES_RIGHT+LANES_LEFT+1)] for y in range(BLOCKS_AHEAD+BLOCKS_BEHIND+2)]
 knowledge_matrix = [[0 for x in range(LANES_RIGHT+LANES_LEFT+1)] for y in range(BLOCKS_AHEAD+BLOCKS_BEHIND+2)]
-print(knowledge_matrix)
 
 while LIFE > 0:
     gui(area)
@@ -429,9 +458,9 @@ while LIFE > 0:
         for i in range(0, BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
             for j in range(0, LANES_LEFT + LANES_RIGHT + 1):
                 collision_matrix[i][j] = pygame.draw.rect(windowSurface, (255, 0, 0), (
-                int(player_car['self_rect'].topleft[0] + 59 * j - 60*LANES_LEFT), int(player_car['self_rect'].topleft[1]) + 30 * i - 30*BLOCKS_AHEAD, 30, 30))
+                int(player_car['self_rect'].topleft[0] + 59 * j - 60 * LANES_LEFT),
+                int(player_car['self_rect'].topleft[1]) + 30 * i - 30 * BLOCKS_AHEAD, 30, 30))
 
-        print(collision_matrix)
         if player_car['self_rect'].bottom < 0:
             player_car['self_rect'].topleft = (link_dict[LANE_NO][0] + 10, WINDOW_HEIGHT)
             for c in cars:
@@ -460,6 +489,7 @@ while LIFE > 0:
                     c['self_rect'].topleft = (link_dict[c['lane']][0] + 10, c['self_rect'].topleft[1] + WINDOW_HEIGHT + 50)
                     c['collision_rect'][1].topleft = (link_dict[c['lane']][0] + 10, c['collision_rect'][0].topleft[1] + WINDOW_HEIGHT + 110)
 
+
         for c in cars:
             c['collision_rect'][1].move_ip(0, -c['speed'])
             c['self_rect'].move_ip(0, -c['speed'])
@@ -467,11 +497,6 @@ while LIFE > 0:
             t_collision(c, cars)
             if p_collision(player_car, cars):
                 LIFE = LIFE - 1
-            for i in range(0, BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
-                for j in range(0, LANES_LEFT + LANES_RIGHT + 1):
-                    if k_collision(i, j, c):
-                        knowledge_matrix[i][j] = 1
-
 
         player_car['speed'] = int(CAR_SPEED2/5)
         player_car['self_rect'].move_ip(0, -player_car['speed'])
@@ -503,19 +528,16 @@ if LIFE == 0:
     if choice1 == 2 or choice1 == 1:
         LIFE = 1
 
-# @@@@ FEED DATA @@@@
-index = 0
-file_name = "mat"
-file_name += str(index)
-path = "data/"+file_name+".csv"
-if not os.path.exists(path):
-    with open("data/"+file_name+".csv", 'w') as train_data:
-        file_writer = csv.writer(train_data, delimiter=',')
-        file_writer.writerow(["Collision_Matrix", "Keystroke"])
-        index += 1
+#print(count)
 
-with open("data/"+file_name+".csv", 'r') as f:
-    reader = csv.reader(f, delimiter=',')
-    for rows in reader:
-        for i in range(0,len(rows)):
-            print(rows[i])
+with open(path, 'a') as train_data:
+    file_writer = csv.writer(train_data, delimiter='\n')
+    file_writer.writerow(knowledge)
+
+# @@@@ FEED DATA @@@@
+# with open("data/"+file_name+".csv", 'r') as f:
+#     reader = csv.reader(f, delimiter=',')
+#     for rows in reader:
+#         for i in range(0,len(rows)):
+#             print(rows[i])
+#
