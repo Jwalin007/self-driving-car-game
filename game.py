@@ -67,6 +67,7 @@ file_name = "mat"
 file_name += str(index)
 path = "data/"+file_name+".csv"
 knowledge = []
+keystroke = [0,0,0,0,0]
 
 # CNN VARIABLES
 REWARD = 0  # cars passed (may be positive or negative)
@@ -213,22 +214,48 @@ def t_collision(some_car, traffic_cars):
 # check collision of traffic cars with collision matrix
 def k_collision(tname, delay):
     while True:
-        global count
+        global count, keystroke
         time.sleep(delay)
+        is_empty_knowledge_area = True
+
+        for i in range(0, BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
+            for j in range(0, LANES_LEFT + LANES_RIGHT + 1):
+                knowledge_matrix[i][j] = 0
+
         for car in cars:
-            for i in range(0, BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
-                for j in range(0, LANES_LEFT + LANES_RIGHT + 1):
-                    if (car['stat'] == "") and ((car['self_rect'].top >= collision_matrix[i][j][1]) and (car['self_rect'].top <= collision_matrix[i][j][1] + 60)) and ((car['self_rect'].right > collision_matrix[i][j][0]) and (car['self_rect'].left < collision_matrix[i][j][0] + 30)):
-                        knowledge_matrix[i][j] = 1
-                        car['stat'] = "mc"
-                    else:
-                        knowledge_matrix[i][j] = 0
-            if car['stat'] != "" and car['stat'] != "counted":
-                count += 1
-                print(count)
-                car['stat'] = "counted"
-        # global knowledge
-        # knowledge.append(str(knowledge_matrix))
+            if ((car['self_rect'].top >= collision_matrix[0][0][1]) and (car['self_rect'].top <= collision_matrix[BLOCKS_BEHIND+BLOCKS_AHEAD+1][0][1] + 30)) and ((car['self_rect'].right > collision_matrix[0][0][0]) and (car['self_rect'].left < collision_matrix[0][LANES_LEFT+LANES_RIGHT][0] + 30)):
+                # print("car in knowledge area")
+                is_empty_knowledge_area = False
+                for i in range(0, BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
+                    for j in range(0, LANES_LEFT + LANES_RIGHT + 1):
+                        if ((car['self_rect'].top >= collision_matrix[i][j][1]) and (car['self_rect'].top <= collision_matrix[i][j][1] + 30)) and ((car['self_rect'].right > collision_matrix[i][j][0]) and (car['self_rect'].left < collision_matrix[i][j][0] + 30)):
+                            knowledge_matrix[i][j] = 1
+                        if ((car['self_rect'].center[1] >= collision_matrix[i][j][1]) and (
+                            car['self_rect'].center[1] <= collision_matrix[i][j][1] + 30)) and (
+                            (car['self_rect'].right > collision_matrix[i][j][0]) and (
+                            car['self_rect'].left < collision_matrix[i][j][0] + 30)):
+                            knowledge_matrix[i][j] = 1
+                knowledge.append(str(knowledge_matrix) + str(keystroke))
+
+        if is_empty_knowledge_area:
+            knowledge.append(str(knowledge_matrix) + str(keystroke))
+
+    # while True:
+    #     global count, knowledge
+    #     time.sleep(delay)
+    #     for car in cars:
+    #         for i in range(0, BLOCKS_AHEAD + BLOCKS_BEHIND + 2):
+    #             for j in range(0, LANES_LEFT + LANES_RIGHT + 1):
+    #                 if (car['stat'] == "") and ((car['self_rect'].top >= collision_matrix[i][j][1]) and (car['self_rect'].top <= collision_matrix[i][j][1] + 60)) and ((car['self_rect'].right > collision_matrix[i][j][0]) and (car['self_rect'].left < collision_matrix[i][j][0] + 30)):
+    #                     knowledge_matrix[i][j] = 1
+    #                     car['stat'] = "mc"
+    #                 else:
+    #                     knowledge_matrix[i][j] = 0
+    #                 knowledge.append(str(knowledge_matrix[i][j]))
+    #         if car['stat'] != "" and car['stat'] != "counted":
+    #             count += 1
+    #             print(count)
+    #             car['stat'] = "counted"
 
 
 # Draw the game world on the window.
@@ -352,7 +379,7 @@ try:
     _thread.start_new_thread(update2, ("update_thread2", 3, ))
     _thread.start_new_thread(update3, ("update_thread3", 0.01,))
     _thread.start_new_thread(count_timer, ("update_thread4", 0.2,))
-    _thread.start_new_thread(k_collision, ("update_thread5", 0.001,))
+    _thread.start_new_thread(k_collision, ("update_thread5", 0.01,))
     print("Success: Escape sequence initiated!")
 except:
     print("Error: unable to start thread")
@@ -436,14 +463,18 @@ while LIFE > 0:
                     change_in_speed = 0
             if (event.type == pygame.KEYDOWN) and (event.key == pygame.K_UP):
                     change_in_speed = 0.2
+                    keystroke = [0, 1, 0, 0, 0]
             if (event.type == pygame.KEYDOWN) and (event.key == pygame.K_DOWN):
                     change_in_speed = -0.2
+                    keystroke = [0, 0, 0, 1, 0]
             if (event.type == pygame.KEYDOWN) and (event.key == pygame.K_LEFT):
+                keystroke = [1, 0, 0, 0, 0]
                 if player_car['lane'] > 1:
                     player_car['lane'] = player_car['lane'] - 1
                     LANE_NO = LANE_NO - 1
                     player_car['self_rect'].left = player_car['self_rect'].left - int(11*LANE_WIDTH/10)
             if (event.type == pygame.KEYDOWN) and (event.key == pygame.K_RIGHT):
+                keystroke = [0, 0, 1, 0, 0]
                 if player_car['lane'] < 6:
                     LANE_NO = LANE_NO + 1
                     player_car['lane'] = player_car['lane'] + 1
@@ -515,6 +546,17 @@ while LIFE > 0:
 #  END SCREEN
 # ***************
 
+# print(count)
+#writing to csv
+with open(path, 'a') as train_data:
+    file_writer = csv.writer(train_data, delimiter=',')
+    for row in knowledge:
+        input = []
+        for c in row:
+            if c == '0' or c == '1':
+                input.append(c)
+        file_writer.writerow(input)
+
 if LIFE == 0:
     text_display('!! ~~ Game over ~~ !!', font1, windowSurface, (WINDOW_WIDTH / 4) - 10, (WINDOW_HEIGHT / 3),
                  (0, 0, 0), (255, 255, 255))
@@ -527,12 +569,6 @@ if LIFE == 0:
     choice1 = is_key_pressed()
     if choice1 == 2 or choice1 == 1:
         LIFE = 1
-
-#print(count)
-
-with open(path, 'a') as train_data:
-    file_writer = csv.writer(train_data, delimiter='\n')
-    file_writer.writerow(knowledge)
 
 # @@@@ FEED DATA @@@@
 # with open("data/"+file_name+".csv", 'r') as f:
